@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -68,37 +69,53 @@ namespace RuntimeCodeGeneration
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
             );
 
-            using var memoryStream = new MemoryStream();
+            var dllFilePath = $"{AppContext.BaseDirectory}/GeneratedConfig.dll";
 
-            var emitResult = compilation.Emit(memoryStream);
-
-            if (!emitResult.Success)
+            await using (var dllStream = File.Create(dllFilePath))
             {
-                // Dump diagnostics if compilation failed
-                foreach (var diag in emitResult.Diagnostics)
-                {
-                    Console.Error.WriteLine(diag);
-                }
+                var emitResult = compilation.Emit(
+                    peStream: dllStream
+                );
 
-                return;
+                if (!emitResult.Success)
+                {
+                    // Dump diagnostics if compilation failed
+                    foreach (var diag in emitResult.Diagnostics)
+                    {
+                        Console.Error.WriteLine(diag);
+                    }
+
+                    return;
+                }
             }
 
-            memoryStream.Seek(0, SeekOrigin.Begin);
+            var defaultAssemblyLoadContext = AssemblyLoadContext.Default;
 
-            var configAssembly = Assembly.Load(memoryStream.ToArray());
+            var configAssembly = defaultAssemblyLoadContext.LoadFromAssemblyPath(dllFilePath);
+
+            Console.WriteLine($"List of assembly load contexts: {string.Join(", ", AssemblyLoadContext.All.Select(x => x.Name))}\n");
 
             var configType = configAssembly.GetType(CONFIG_NAME)!;
 
             Console.WriteLine(
             $"""
-            Name of assembly: {configAssembly.FullName}
+            Name of generated assembly: {configAssembly.FullName}
+            
+            Its load context: {AssemblyLoadContext.GetLoadContext(configAssembly)!.Name}
             
             Is it a collectable assembly? {configAssembly.IsCollectible}
             
             It it a dynamic assembly? {configAssembly.IsDynamic}
+
             """);
 
-            var consumerType = typeof(Consumer<>).MakeGenericType(configType);
+            var consumerTypeUnbounded = typeof(Consumer<>);
+
+            RuntimeHelpers.RunClassConstructor(consumerTypeUnbounded.TypeHandle);
+
+            RuntimeHelpers.RunClassConstructor(configType.TypeHandle);
+
+            var consumerType = consumerTypeUnbounded.MakeGenericType(configType);
 
             RuntimeHelpers.RunClassConstructor(consumerType.TypeHandle);
 
@@ -109,14 +126,25 @@ namespace RuntimeCodeGeneration
 
             unsafe
             {
-                var doWorkFP = (delegate*<int>) doWorkMethod
-                    .MethodHandle
-                    .GetFunctionPointer();
+                if (true)
+                {
+                    var doWorkGeneratedFP = (delegate*<int>) doWorkMethod
+                        .MethodHandle
+                        .GetFunctionPointer();
 
-                Console.WriteLine($"Result ( Generated ) - {doWorkFP()}");
+                    Console.WriteLine($"Result ( Generated ) - {doWorkGeneratedFP()}");
+                }
+
+                if (true)
+                {
+                    var doWorkDefaultFP = (delegate*<int>) typeof(Consumer<DefaultConfig>)
+                        .GetMethod(nameof(Consumer<DefaultConfig>.DoWork))!
+                        .MethodHandle
+                        .GetFunctionPointer();
+
+                    Console.WriteLine($"Result ( Default ) - {doWorkDefaultFP()}");
+                }
             }
-
-            Console.WriteLine($"Result ( Default ) - {Consumer<DefaultConfig>.DoWork()}");
         }
     }
 }
