@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
 using System.Runtime.CompilerServices;
-using Microsoft.CodeAnalysis.CSharp.Scripting;
-using Microsoft.CodeAnalysis.Scripting;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace RuntimeCodeGeneration
 {
@@ -40,30 +40,54 @@ namespace RuntimeCodeGeneration
             // Then run the application:
             // dotnet run -c Release
 
+            const string CONFIG_NAME = "GeneratedConfig";
+
             var option1 = true;
 
             var code =
             $$"""
-            public readonly struct Config: IConfig
+            public readonly struct {{CONFIG_NAME}}: RuntimeCodeGeneration.IConfig
             {
                 public static bool Option1 => {{option1.ToString().ToLower()}};
             }
-            
-            return typeof(Config);
             """;
 
-            var options = ScriptOptions
-                .Default
-                .AddReferences(typeof(IConfig).Assembly)
-                .AddImports("RuntimeCodeGeneration")
-                .WithAllowUnsafe(true);
+            var syntaxTree = CSharpSyntaxTree.ParseText(code);
 
-            var configType = await CSharpScript.EvaluateAsync<Type>(
-                code: code,
-                options: options
-            )!;
+            var refs = AppDomain
+                .CurrentDomain
+                .GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location))
+                .Select(a => MetadataReference.CreateFromFile(a.Location))
+                .Cast<MetadataReference>();
 
-            var configAssembly = configType.Assembly;
+            var compilation = CSharpCompilation.Create(
+                assemblyName: "GeneratedConfigAssembly",
+                syntaxTrees: [ syntaxTree ],
+                references: refs,
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+            );
+
+            using var memoryStream = new MemoryStream();
+
+            var emitResult = compilation.Emit(memoryStream);
+
+            if (!emitResult.Success)
+            {
+                // Dump diagnostics if compilation failed
+                foreach (var diag in emitResult.Diagnostics)
+                {
+                    Console.Error.WriteLine(diag);
+                }
+
+                return;
+            }
+
+            memoryStream.Seek(0, SeekOrigin.Begin);
+
+            var configAssembly = Assembly.Load(memoryStream.ToArray());
+
+            var configType = configAssembly.GetType(CONFIG_NAME)!;
 
             Console.WriteLine(
             $"""
