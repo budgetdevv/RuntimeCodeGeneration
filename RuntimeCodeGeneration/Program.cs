@@ -18,7 +18,7 @@ namespace RuntimeCodeGeneration
     public static class Consumer<ConfigT> where ConfigT : IConfig
     {
         // For demonstration purposes, just promote it straight to T1
-        // The class construct will be pre-ran to avoid regressing codegen
+        // The class constructor will be pre-ran to avoid regressing codegen
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         public static int DoWork()
         {
