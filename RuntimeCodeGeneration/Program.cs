@@ -65,11 +65,14 @@ namespace RuntimeCodeGeneration
 
             var configAssembly = configType.Assembly;
 
-            Console.WriteLine($"Name of assembly: {configAssembly.FullName}");
-
-            Console.WriteLine($"Is it a collectable assembly? {configAssembly.IsCollectible}");
-
-            Console.WriteLine($"It it a dynamic assembly? {configAssembly.IsDynamic}");
+            Console.WriteLine(
+            $"""
+            Name of assembly: {configAssembly.FullName}
+            
+            Is it a collectable assembly? {configAssembly.IsCollectible}
+            
+            It it a dynamic assembly? {configAssembly.IsDynamic}
+            """);
 
             var consumerType = typeof(Consumer<>).MakeGenericType(configType);
 
