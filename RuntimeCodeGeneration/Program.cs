@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Scripting;
+using Microsoft.CodeAnalysis.Scripting;
 
 namespace RuntimeCodeGeneration
 {
@@ -49,55 +51,26 @@ namespace RuntimeCodeGeneration
 
             var code =
             $$"""
-            public readonly struct {{CONFIG_NAME}}: RuntimeCodeGeneration.IConfig
+            public readonly struct Config: IConfig
             {
                 public static bool Option1 => {{option1.ToString().ToLower()}};
             }
+
+            return typeof(Config);
             """;
 
-            var syntaxTree = CSharpSyntaxTree.ParseText(code);
+            var options = ScriptOptions
+                .Default
+                .AddReferences(typeof(IConfig).Assembly)
+                .AddImports("RuntimeCodeGeneration")
+                .WithAllowUnsafe(true);
 
-            var refs = AppDomain
-                .CurrentDomain
-                .GetAssemblies()
-                .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location))
-                .Select(a => MetadataReference.CreateFromFile(a.Location))
-                .Cast<MetadataReference>();
+            var configType = await CSharpScript.EvaluateAsync<Type>(
+                code: code,
+                options: options
+            )!;
 
-            var compilation = CSharpCompilation.Create(
-                assemblyName: "GeneratedConfigAssembly",
-                syntaxTrees: [ syntaxTree ],
-                references: refs,
-                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-            );
-
-            var dllFilePath = $"{AppContext.BaseDirectory}/GeneratedConfig.dll";
-
-            await using (var dllStream = File.Create(dllFilePath))
-            {
-                var emitResult = compilation.Emit(
-                    peStream: dllStream
-                );
-
-                if (!emitResult.Success)
-                {
-                    // Dump diagnostics if compilation failed
-                    foreach (var diag in emitResult.Diagnostics)
-                    {
-                        Console.Error.WriteLine(diag);
-                    }
-
-                    return;
-                }
-            }
-
-            var defaultAssemblyLoadContext = AssemblyLoadContext.Default;
-
-            var configAssembly = defaultAssemblyLoadContext.LoadFromAssemblyPath(dllFilePath);
-
-            Console.WriteLine($"List of assembly load contexts: {string.Join(", ", AssemblyLoadContext.All.Select(x => x.Name))}\n");
-
-            var configType = configAssembly.GetType(CONFIG_NAME)!;
+            var configAssembly = configType.Assembly;
 
             Console.WriteLine(
             $"""
