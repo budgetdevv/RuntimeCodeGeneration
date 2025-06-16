@@ -56,20 +56,20 @@ namespace RuntimeCodeGeneration
 
             var code =
             $$"""
-            public readonly struct Config: IConfig
+            public readonly struct {{CONFIG_NAME}}: {{nameof(IConfig)}}
             {
-                public static bool Option1 => {{option1.ToString().ToLower()}};
+                public static bool {{nameof(IConfig.Option1)}} => {{option1.ToString().ToLower()}};
                 
-                public static bool Option2 => {{option2.ToString().ToLower()}};
+                public static bool {{nameof(IConfig.Option2)}} => {{option2.ToString().ToLower()}};
             }
 
-            return typeof(Config);
+            return typeof({{CONFIG_NAME}});
             """;
 
             var options = ScriptOptions
                 .Default
                 .AddReferences(typeof(IConfig).Assembly)
-                .AddImports("RuntimeCodeGeneration")
+                .AddImports(typeof(IConfig).Namespace!)
                 .WithOptimizationLevel(OptimizationLevel.Release)
                 .WithAllowUnsafe(true);
 
