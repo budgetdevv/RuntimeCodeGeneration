@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 
@@ -22,26 +21,14 @@ namespace RuntimeCodeGeneration
         public static bool Option2 => true;
     }
 
-    public readonly struct BuiltConfig(bool option1, bool option2)
-    {
-        public readonly bool Option1 = option1;
-
-        public readonly bool Option2 = option2;
-    }
-
     public static class Consumer<ConfigT> where ConfigT: IConfig
     {
-        private static readonly BuiltConfig BUILT_CONFIG = new(
-            option1: ConfigT.Option1,
-            option2: ConfigT.Option2
-        );
-
         // For demonstration purposes, just promote it straight to T1
         // The class constructor will be pre-ran to avoid regressing codegen
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         public static int DoWork()
         {
-            var isOne = BUILT_CONFIG.Option1 && BUILT_CONFIG.Option2;
+            var isOne = ConfigT.Option1 && ConfigT.Option2;
 
             return isOne ? 1 : 0;
         }
@@ -83,6 +70,7 @@ namespace RuntimeCodeGeneration
                 .Default
                 .AddReferences(typeof(IConfig).Assembly)
                 .AddImports("RuntimeCodeGeneration")
+                .WithOptimizationLevel(OptimizationLevel.Release)
                 .WithAllowUnsafe(true);
 
             var configType = await CSharpScript.EvaluateAsync<Type>(
