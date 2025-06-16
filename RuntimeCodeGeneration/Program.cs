@@ -16,14 +16,16 @@ namespace RuntimeCodeGeneration
         public static bool Option1 => true;
     }
 
-    public static class Consumer<ConfigT> where ConfigT : IConfig
+    public static class Consumer<ConfigT> where ConfigT: IConfig
     {
+        private static readonly bool OPTION_1 = ConfigT.Option1;
+
         // For demonstration purposes, just promote it straight to T1
         // The class constructor will be pre-ran to avoid regressing codegen
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         public static int DoWork()
         {
-            return ConfigT.Option1 ? 1 : 0;
+            return OPTION_1 ? 1 : 0;
         }
     }
 
@@ -113,13 +115,15 @@ namespace RuntimeCodeGeneration
 
             RuntimeHelpers.RunClassConstructor(consumerTypeUnbounded.TypeHandle);
 
-            RuntimeHelpers.RunClassConstructor(configType.TypeHandle);
+            var generatedConsumerType = consumerTypeUnbounded.MakeGenericType(configType);
 
-            var consumerType = consumerTypeUnbounded.MakeGenericType(configType);
+            RuntimeHelpers.RunClassConstructor(generatedConsumerType.TypeHandle);
 
-            RuntimeHelpers.RunClassConstructor(consumerType.TypeHandle);
+            var defaultConsumerType = typeof(Consumer<DefaultConfig>);
 
-            var doWorkMethod = consumerType.GetMethod(
+            RuntimeHelpers.RunClassConstructor(defaultConsumerType.TypeHandle);
+
+            var doWorkMethod = generatedConsumerType.GetMethod(
                 name: nameof(Consumer<DefaultConfig>.DoWork),
                 bindingAttr: BindingFlags.Static | BindingFlags.Public
             )!;
